@@ -1,3 +1,6 @@
+import json
+import shlex
+
 from bitgn.harness_connect import HarnessServiceClientSync
 from bitgn.harness_pb2 import EndTrialRequest, EvalPolicy, GetBenchmarkRequest, StartPlaygroundRequest, StatusRequest
 from bitgn.vm.pcm_connect import PcmRuntimeClientSync
@@ -7,6 +10,7 @@ from bitgn.vm.pcm_pb2 import (
     DeleteRequest,
     FindRequest,
     ListRequest,
+    ListResponse,
     MkDirRequest,
     MoveRequest,
     Outcome,
@@ -14,10 +18,15 @@ from bitgn.vm.pcm_pb2 import (
     SearchRequest,
     TreeRequest,
     WriteRequest,
+    ReadResponse
 )
 from enum import Enum
 from pydantic import BaseModel, Field
 from typing import Literal, List
+from google.protobuf.message import Message
+from google.protobuf.json_format import MessageToDict
+
+from utils import TreeFormatter
 
 class TrialState(Enum):
     IDLE = "idle"
@@ -53,25 +62,23 @@ class Trial:
         self.score_detail = res.score_detail
         self.state = TrialState.ENDED
 
-class BenchmarkState(Enum):
-    IDLE = "idle"
-    FETCHED = "fetched"
+from dataclasses import dataclass
 
+@dataclass
 class Benchmark:
-    def __init__(self,  client: HarnessServiceClientSync, benchmark_id: str):
-        self.client = client
-        self.id = benchmark_id
-        self.policy = None
-        self.tasks = None
-        self.description = None
-        self.state = BenchmarkState.IDLE
+    id: str
+    policy: str
+    description: str
+    tasks: list
 
-    def fetch(self):
-        res = self.client.get_benchmark(GetBenchmarkRequest(benchmark_id=self.benchmark_id))
-        self.policy = EvalPolicy.Name(res.policy)
-        self.tasks = res.tasks
-        res.description = self.description
-        self.state = BenchmarkState.FETCHED
+def fetch_benchmark(client: HarnessServiceClientSync, benchmark_id: str) -> Benchmark:
+    res = client.get_benchmark(GetBenchmarkRequest(benchmark_id=benchmark_id))
+    return Benchmark(
+        id=benchmark_id,
+        policy=EvalPolicy.Name(res.policy),
+        description=res.description,
+        tasks=list(res.tasks),
+    )
 
 
 class VMCommand(BaseModel):
@@ -86,6 +93,7 @@ class RequestFindVMCommand(VMCommand):
     name: str = Field(description="Name or pattern to search for")
     kind: Literal["all", "files", "dirs"] = Field("all", description="Type of entries to find. One of [all, files, dirs]")
     limit: int = Field(10, ge=1, le=20, description="Maximum number of results to return")
+    root: str = Field("/", description="search root")
 
 
 class RequestSearchVMCommand(VMCommand):
@@ -212,3 +220,65 @@ class VM:
                 return self.execute_report_task_completion_command(command)
             case _:
                 raise ValueError(f"Unknown command type: {type(command)}")
+            
+
+class VMResponseFormatter:
+    @staticmethod
+    def format(command: VMCommand, response: Message) -> str:
+        if response is None:
+            return "{}"
+        match command:
+            case RequestListVMCommand():
+                return VMResponseFormatter.format_list_response(command, response)
+            case RequestFindVMCommand():
+                return VMResponseFormatter.format_find_response(command, response)
+            case RequestTreeVMCommand():
+                return VMResponseFormatter.format_tree_response(command, response)
+            case RequestReadVMCommand():
+                return VMResponseFormatter.format_read_response(command, response)
+            case RequestSearchVMCommand():
+                return VMResponseFormatter.format_search_response(command, response)
+            case _:
+                return json.dumps(MessageToDict(response), indent=2)
+
+    @staticmethod
+    def format_list_response(command: RequestListVMCommand, response: ListResponse) -> str:
+        body = "\n".join(
+            f"{entry.name}/" if entry.is_dir else entry.name for entry in response.entries
+        ) or "."
+        return VMResponseFormatter._format_command(f"ls {command.path}", body)
+    
+    @staticmethod
+    def format_tree_response(command: RequestTreeVMCommand, response: ListResponse) -> str:
+        body = TreeFormatter(response.root).format()
+        level_arg = f" -L {command.level}" if command.level > 0 else ""
+        return VMResponseFormatter._format_command(f"tree{level_arg} {command.root}", body)
+    
+    @staticmethod
+    def format_read_response(command: RequestReadVMCommand, response: ReadResponse) -> str:
+        if command.start_line > 0 or command.end_line > 0:
+            start = command.start_line or 1 
+            end   = command.end_line   or "$"
+            cmd = f"sed -n '{start},{end}p' {command.path}"
+        else:
+            cmd = f"cat{' -n' if command.number else ''} {command.path}"
+        return VMResponseFormatter._format_command(cmd, response.content)
+    
+    @staticmethod
+    def format_search_response(command: RequestSearchVMCommand, response: ListResponse) -> str:
+        root    = shlex.quote(command.root)
+        pattern = shlex.quote(command.pattern)
+        cmd = f"rg -n --no-heading -e {pattern} {root}"
+        body = "\n".join(
+            f"{m.path}:{m.line}:{m.line_text}" for m in response.matches
+        )
+        return VMResponseFormatter._format_command(cmd, body)
+
+    @staticmethod
+    def format_find_response(command: RequestFindVMCommand, response: ListResponse) -> str:
+        body = "\n".join(f"{entry.name}/" if entry.is_dir else entry.name for entry in response.entries) or "."
+        return VMResponseFormatter._format_command(f"find -name {command.name} {command.root}", body)
+
+    @staticmethod
+    def _format_command(command: str, response: Message) -> str:
+        return f"{command}\n{response}"
