@@ -25,6 +25,5 @@ log = logging.getLogger("vm_agent")
 
 
 def printout(*args, **kwargs):
-    """Print rich renderables (Panel, Table, Rule, etc.) to both outputs."""
     _term.print(*args, **kwargs)
     _file.print(*args, **kwargs)

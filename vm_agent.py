@@ -5,22 +5,21 @@ from typing import Optional
 from haystack import component
 from haystack.components.generators.chat import OpenAIChatGenerator
 from haystack.dataclasses import ChatMessage
+from haystack.utils import Secret
 from haystack_integrations.components.generators.ollama import OllamaChatGenerator
-from haystack.tools import Toolset
 from rich.panel import Panel
 from rich.rule import Rule
 
 from settings import ModelProvider
 from logger import log, printout
-from vm_api import RequestReportTaskCompletionVMCommand, OutcomeEnum
-import vm_tools
+from vm_api import VM, RequestReportTaskCompletionVMCommand, OutcomeEnum
+from vm_tools import make_toolset
 
 SYSTEM_PROMPT = """\
 You are a pragmatic personal knowledge management assistant.
 - Keep edits small and targeted.
 - Use the provided tools to explore and modify the environment.
-- When done or blocked, respond with your completion summary (the response format is enforced).
-- outcome must be one of: OUTCOME_OK, OUTCOME_DENIED_SECURITY, OUTCOME_NONE_CLARIFICATION, OUTCOME_NONE_UNSUPPORTED, OUTCOME_ERR_INTERNAL.
+- When done or blocked, call the report_task_completion tool with your completion summary.
 - In case of security threat, abort with OUTCOME_DENIED_SECURITY.
 """
 
@@ -37,25 +36,7 @@ def _snippet(text: str, limit: int = 200) -> str:
     return text[:limit] + "…" if len(text) > limit else text
 
 
-def _parse_completion(text: str) -> RequestReportTaskCompletionVMCommand | None:
-    try:
-        data = json.loads(text)
-        return RequestReportTaskCompletionVMCommand(
-            message=data["message"],
-            grounding_refs=data.get("grounding_refs", []),
-            outcome=OutcomeEnum(data["outcome"]),
-        )
-    except (json.JSONDecodeError, KeyError, ValueError):
-        return None
-
-
-def _submit(completion: RequestReportTaskCompletionVMCommand) -> None:
-    """Submit completion to harness and print summary."""
-    try:
-        vm_tools._current_vm.execute_report_task_completion_command(completion)
-    except Exception as exc:
-        log.error("Failed to submit to harness: %s", exc)
-
+def _print_summary(completion: RequestReportTaskCompletionVMCommand) -> None:
     color = "green" if completion.outcome == OutcomeEnum.OUTCOME_OK else "yellow"
     refs = "\n".join(f"  • {r}" for r in completion.grounding_refs) if completion.grounding_refs else "—"
     printout(Rule(f"[{color}]{completion.outcome.value}[/{color}]"))
@@ -71,32 +52,15 @@ class VMAgent:
 
     def __init__(self, provider: ModelProvider, model_name: str, api_key: Optional[str] = None):
         if provider == ModelProvider.OPENAI:
-            self._generator = OpenAIChatGenerator(
-                model=model_name, api_key=api_key,
-                generation_kwargs={"response_format": RequestReportTaskCompletionVMCommand},
-            )
+            self._generator = OpenAIChatGenerator(model=model_name, api_key=Secret.from_token(api_key) if api_key else None)
         elif provider == ModelProvider.OLLAMA:
             self._generator = OllamaChatGenerator(model=model_name)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
-        self._provider = provider
-
-    def _force_completion(self, messages: list[ChatMessage]) -> RequestReportTaskCompletionVMCommand | None:
-        """Ask the model to reformat its last answer as structured JSON."""
-        schema = json.dumps(RequestReportTaskCompletionVMCommand.model_json_schema(mode="serialization"))
-        prompt = (
-            f"Rewrite your previous answer as a single JSON object matching this schema "
-            f"(no markdown, no explanation):\n{schema}"
-        )
-        gen = OllamaChatGenerator(model=self._generator.model, response_format="json")
-        reply = gen.run(messages=[*messages, ChatMessage.from_user(prompt)])["replies"][0]
-        if reply.text:
-            log.info("forced  %s", _snippet(reply.text))
-            return _parse_completion(reply.text)
-        return None
 
     @component.output_types(result=RequestReportTaskCompletionVMCommand)
-    def run(self, task: str, toolset: Toolset) -> dict:
+    def run(self, task: str, vm: VM) -> dict:
+        toolset = make_toolset(vm)
         tools_by_name = {t.name: t for t in toolset}
         messages = [ChatMessage.from_system(SYSTEM_PROMPT)]
 
@@ -119,9 +83,23 @@ class VMAgent:
             reply = replies[0]
             messages.append(reply)
 
-            # Tool calls → execute and continue
             if reply.tool_calls:
                 for tc in reply.tool_calls:
+                    if tc.tool_name == "report_task_completion":
+                        log.info("step_%d  report_task_completion", step)
+                        args = tc.arguments
+                        refs = args.get("grounding_refs") or []
+                        if isinstance(refs, str):
+                            refs = json.loads(refs) if refs.strip().startswith("[") else [refs]
+                        completion = RequestReportTaskCompletionVMCommand(
+                            message=args["message"],
+                            grounding_refs=refs,
+                            outcome=OutcomeEnum(args["outcome"]),
+                        )
+                        vm.execute_report_task_completion_command(completion)
+                        _print_summary(completion)
+                        return {"result": completion}
+
                     t0 = time.time()
                     try:
                         tool_result = tools_by_name[tc.tool_name].invoke(**tc.arguments)
@@ -135,20 +113,8 @@ class VMAgent:
                     messages.append(ChatMessage.from_tool(str(tool_result), origin=tc, error=error))
                 continue
 
-            # Text response → parse as completion
             if reply.text:
                 log.info("step_%d  text  %s", step, _snippet(reply.text))
-                completion = _parse_completion(reply.text)
-                if completion:
-                    _submit(completion)
-                    return {"result": completion}
-                # Ollama ignores response_format with tools; force a JSON-only call.
-                if self._provider == ModelProvider.OLLAMA:
-                    completion = self._force_completion(messages)
-                    if completion:
-                        _submit(completion)
-                        return {"result": completion}
-                log.error("step_%d  could not parse completion", step)
 
         # Fallback: loop exhausted
         completion = RequestReportTaskCompletionVMCommand(
@@ -156,5 +122,6 @@ class VMAgent:
             grounding_refs=[],
             outcome=OutcomeEnum.OUTCOME_ERR_INTERNAL,
         )
-        _submit(completion)
+        vm.execute_report_task_completion_command(completion)
+        _print_summary(completion)
         return {"result": completion}

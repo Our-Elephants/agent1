@@ -1,9 +1,3 @@
-"""Tools wrapper exposing VM operations as Haystack tools.
-
-Tool functions are defined at module level (not as closures) so Haystack can
-serialize them. They access the active VM via a module-level reference set
-by `make_toolset`.
-"""
 from typing import Literal
 
 from haystack.tools import tool, Toolset
@@ -13,6 +7,7 @@ from vm_api import (
     RequestTreeVMCommand, RequestFindVMCommand, RequestSearchVMCommand, RequestListVMCommand,
     RequestReadVMCommand, RequestContextVMCommand, RequestWriteVMCommand,
     RequestDeleteVMCommand, RequestMkDirVMCommand, RequestMoveVMCommand,
+    RequestReportTaskCompletionVMCommand, OutcomeEnum,
 )
 
 _current_vm: VM | None = None
@@ -87,10 +82,17 @@ def move(from_name: str, to_name: str) -> str:
     resp = _current_vm.execute_move_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
-_VM_TOOLSET = Toolset([tree, find, search, ls, read, context, write, delete, mkdir, move])
+@tool(description=(
+    "Report task completion. Call this when done or blocked. "
+    "outcome must be one of: OUTCOME_OK, OUTCOME_DENIED_SECURITY, "
+    "OUTCOME_NONE_CLARIFICATION, OUTCOME_NONE_UNSUPPORTED, OUTCOME_ERR_INTERNAL."
+))
+def report_task_completion(message: str, outcome: str, grounding_refs: list[str] | None = None) -> str:
+    return "noop"
+
+_VM_TOOLSET = Toolset([tree, find, search, ls, read, context, write, delete, mkdir, move, report_task_completion])
 
 def make_toolset(vm: VM) -> Toolset:
-    """Create a Toolset bound to the given VM instance."""
     global _current_vm
     _current_vm = vm
     return _VM_TOOLSET

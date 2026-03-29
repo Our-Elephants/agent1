@@ -13,6 +13,6 @@ class Settings(BaseSettings):
 
     benchmark_host: str = Field(..., env="BENCHMARK_HOST")
     benchmark_id: str = Field(..., env="BENCHMARK_ID")
-    MODEL_PROVIDER: ModelProvider = Field(ModelProvider.OPENAI, env="MODEL_PROVIDER")
-    MODEL_NAME: str = Field("gpt-5.4-mini", env="MODEL_NAME")
-    MODEL_API_TOKEN: Optional[str] = Field(None, env="MODEL_API_TOKEN")
+    model_provider: ModelProvider = Field(ModelProvider.OPENAI, env="MODEL_PROVIDER")
+    model_name: str = Field("gpt-5.4-mini", env="MODEL_NAME")
+    model_api_token: Optional[str] = Field(None, env="MODEL_API_TOKEN")

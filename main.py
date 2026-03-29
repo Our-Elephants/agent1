@@ -12,7 +12,6 @@ from logger import printout
 from settings import Settings
 from vm_agent import VMAgent
 from vm_api import fetch_benchmark, Trial, VM
-from vm_tools import make_toolset
 
 
 def main() -> None:
@@ -30,7 +29,7 @@ def main() -> None:
             f"with {len(benchmark.tasks)} tasks.\n[green]{benchmark.description}[/green]"
         )
 
-        agent = VMAgent(settings.MODEL_PROVIDER, settings.MODEL_NAME, settings.MODEL_API_TOKEN)
+        agent = VMAgent(settings.model_provider, settings.model_name, settings.model_api_token)
 
         for task in benchmark.tasks:
             if task_filter and task.task_id not in task_filter:
@@ -47,8 +46,7 @@ def main() -> None:
             try:
                 pcm_client = PcmRuntimeClientSync(trial.harness_url)
                 vm = VM(pcm_client)
-                toolset = make_toolset(vm)
-                agent.run(task=trial.instruction, toolset=toolset)
+                agent.run(task=trial.instruction, vm=vm)
             except Exception as exc:
                 printout(Text(str(exc), style="red"))
 
