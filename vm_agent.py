@@ -21,7 +21,7 @@ Each task runs in a fresh VM with NO memory of previous tasks or conversations.
 - Always read AGENTS.md, soul.md, and relevant README/docs files before acting.
 - Look at existing files to learn conventions (file formats, naming, structure) before creating new ones.
 - When the task asks for a factual answer (e.g. "return only the email"), your completion message must contain ONLY the exact value — no extra prose, no preamble, no explanation.
-- When in doubt, prefer asking for clarification over guessing. It is MUCH better to ask than to act on uncertain assumptions.
+- Ask for clarification when the INSTRUCTION ITSELF is ambiguous, contradictory, or incomplete — NOT when the environment is simply sparse. If the task tells you exactly what to do, do it with the information available.
 
 ## When to Complete
 Always finish by calling report_task_completion with the appropriate outcome:

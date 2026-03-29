@@ -80,11 +80,17 @@ def main() -> None:
         logger.log("run_error", level="WARN", error_type="KeyboardInterrupt", error_message="Run interrupted by user")
 
     run_duration = round(time.perf_counter() - run_start, 2)
+    total_score = sum(s for _, s in scores)
+    total_tasks = len(scores)
+    score_pct = round(total_score / total_tasks * 100, 1) if total_tasks else 0.0
     logger.log("run_end", scores=scores, duration_s=run_duration)
     logger.write_summary({
         "benchmark_id": settings.benchmark_id,
         "model_provider": settings.model_provider.value,
         "model_name": settings.model_name,
+        "total_score": total_score,
+        "total_tasks": total_tasks,
+        "score_pct": score_pct,
         "scores": [{"task_id": tid, "score": s} for tid, s in scores],
         "duration_s": run_duration,
     })
