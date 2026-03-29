@@ -20,14 +20,14 @@ def tree(level: int = 2, root: str = "/") -> str:
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Find files or directories (args: name, kind, limit, root)")
+@tool(description="Find files or directories by name pattern. limit: max 20 results.")
 def find(name: str, kind: Literal["all", "files", "dirs"] = "all", limit: int = 10, root: str = "/") -> str:
     cmd = RequestFindVMCommand(name=name, kind=kind, limit=limit, root=root)
     resp = _current_vm.execute_find_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Search file contents (args: pattern, limit, root)")
+@tool(description="Search file contents by regex pattern. limit: max 20 results.")
 def search(pattern: str, limit: int = 10, root: str = "/") -> str:
     cmd = RequestSearchVMCommand(pattern=pattern, limit=limit, root=root)
     resp = _current_vm.execute_search_command(cmd)
@@ -41,28 +41,28 @@ def ls(path: str = "/") -> str:
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Read file contents (args: path, number, start_line, end_line)")
+@tool(description="Read file contents. start_line/end_line are 1-based inclusive (0 = default = full file). Set number=true to show line numbers.")
 def read(path: str, number: bool = False, start_line: int = 0, end_line: int = 0) -> str:
     cmd = RequestReadVMCommand(path=path, number=number, start_line=start_line, end_line=end_line)
     resp = _current_vm.execute_read_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Get VM runtime context")
+@tool(description="Get VM runtime context (current time). Takes no arguments.")
 def context() -> str:
     cmd = RequestContextVMCommand()
     resp = _current_vm.execute_context_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Write file (args: path, content, start_line, end_line)")
+@tool(description="Write or create a file. Omit start_line/end_line (or set to 0) for full-file write. For partial edits: start_line and end_line are 1-based inclusive line numbers — the content replaces lines start_line through end_line.")
 def write(path: str, content: str, start_line: int = 0, end_line: int = 0) -> str:
     cmd = RequestWriteVMCommand(path=path, content=content, start_line=start_line, end_line=end_line)
     resp = _current_vm.execute_write_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Delete file or directory (args: path)")
+@tool(description="Delete a file at the given path. To delete a directory, delete each file inside it first.")
 def delete(path: str) -> str:
     cmd = RequestDeleteVMCommand(path=path)
     resp = _current_vm.execute_delete_command(cmd)

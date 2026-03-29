@@ -9,6 +9,7 @@ from bitgn.vm.pcm_pb2 import (
     ContextRequest,
     DeleteRequest,
     FindRequest,
+    FindResponse,
     ListRequest,
     ListResponse,
     MkDirRequest,
@@ -275,8 +276,8 @@ class VMResponseFormatter:
         return VMResponseFormatter._format_command(cmd, body)
 
     @staticmethod
-    def format_find_response(command: RequestFindVMCommand, response: ListResponse) -> str:
-        body = "\n".join(f"{entry.name}/" if entry.is_dir else entry.name for entry in response.entries) or "."
+    def format_find_response(command: RequestFindVMCommand, response: FindResponse) -> str:
+        body = "\n".join(f"{item.name}/" if item.is_dir else item.name for item in response.items) or "."
         return VMResponseFormatter._format_command(f"find -name {command.name} {command.root}", body)
 
     @staticmethod
