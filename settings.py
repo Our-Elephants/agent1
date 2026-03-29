@@ -16,3 +16,4 @@ class Settings(BaseSettings):
     model_provider: ModelProvider = Field(ModelProvider.OPENAI, env="MODEL_PROVIDER")
     model_name: str = Field("gpt-5.4-mini", env="MODEL_NAME")
     model_api_token: Optional[str] = Field(None, env="MODEL_API_TOKEN")
+    model_think: str = Field("high", env="MODEL_THINK")
