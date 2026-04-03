@@ -9,7 +9,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from logger import printout
-from settings import Settings
+from models import Settings
 from vm_agent import VMAgent
 from vm_api import fetch_benchmark, Trial, VM
 
@@ -20,16 +20,16 @@ def main() -> None:
 
     scores = []
     try:
-        client = HarnessServiceClientSync(settings.benchmark_host)
+        client = HarnessServiceClientSync(settings.BENCHMARK_HOST)
         printout("Connecting to BitGN", client.status(StatusRequest()))
 
-        benchmark = fetch_benchmark(client, settings.benchmark_id)
+        benchmark = fetch_benchmark(client, settings.BENCHMARK_ID)
         printout(
             f"{benchmark.policy} benchmark: {benchmark.id} "
             f"with {len(benchmark.tasks)} tasks.\n[green]{benchmark.description}[/green]"
         )
 
-        agent = VMAgent(settings.model_provider, settings.model_name, settings.model_api_token)
+        agent = VMAgent(settings.MODEL_PROVIDER, settings.MODEL_NAME, settings.MODEL_API_TOKEN)
 
         for task in benchmark.tasks:
             if task_filter and task.task_id not in task_filter:
