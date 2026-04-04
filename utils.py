@@ -42,6 +42,7 @@ def run_tool_sequence(
 def build_generation_kwargs(provider: ModelProvider) -> dict:
     if provider == ModelProvider.OPENAI:
         return {
+            "tool_choice": "required",
             "parallel_tool_calls": False,
             "reasoning_effort": "high",
         }

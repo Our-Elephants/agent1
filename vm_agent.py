@@ -97,9 +97,6 @@ class VMAgent:
                 log.info("step_%d  %s  %dms  %s", step, tc.tool_name, elapsed,
                             "ERR" if error else snippet(str(tool_result)))
                 messages.append(ChatMessage.from_tool(str(tool_result), origin=tc, error=error))
-            # TODO needed at all?
-            if reply.text:
-                log.info("step_%d  text  %s", step, snippet(reply.text))
 
         # Fallback: loop exhausted
         completion = RequestReportTaskCompletionVMCommand(
