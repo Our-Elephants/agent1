@@ -39,6 +39,7 @@ class RunLogger:
         self.current_task_log = None
         self.time_started = perf_counter()
         self.logger = self._make_logger()
+        self.logger.info(f"Started run: {self.run_id} ({self.run_dir})")
 
     def _make_run_id(self):
         total_runs = sum(1 for _ in _LOGS_DIR.iterdir())
@@ -84,12 +85,14 @@ class RunLogger:
         self.failed_file.close()
         self.summary_file.close()
 
-    def log_benchmark_loaded(self, benchmark_id, benchmark_policy, benchmark_description):
+    def log_benchmark_loaded(self, benchmark_id, benchmark_policy, benchmark_description, benchmark_tasks):
         self.summary_file.write(
             f"- Benchmark id: {benchmark_id}\n"
             f"- Benchmark policy: {benchmark_policy}\n"
             f"- Benchmark description: {benchmark_description}\n"
+            f"- Benchmark tasks count: {benchmark_tasks} ({benchmark_tasks} tasks)\n"
         )
+        self.summary_file.flush()
         self.logger.info(f"Loaded benchmark: {benchmark_id}")
 
     def log_task_started(self, id: str, task_preview: str, task_hint: str, instruction: str):
@@ -107,8 +110,10 @@ class RunLogger:
 
     def log_task_scored(self, score: float, score_detail: str):
         self.current_task_log.score = score
+        if score < 1:
+            self.current_task_log.is_failed = True
         self.current_task_log.score_detail = score_detail
-        self.logger.info(f"Task {self.current_task_log.id} scored: {score}")
+        self.logger.info(f"Task {self.current_task_log.id} {"passed" if self.current_task_log.is_failed else "passed"}: {score}")
     
     def flush_task_log(self):
         t = self.current_task_log
@@ -121,7 +126,7 @@ class RunLogger:
         f.write(
             f"## Task {t.id}\n"
             f"### Preview\n{t.preview}\n"
-            f"### Instruction\n{t.instruction}\n"
+            f"### Instruction\n```\n{t.instruction}\n```\n"
             f"### Hint\n{t.hint}\n"
             f"### Execution\n{self._make_execution_log(t)}\n"
             f"{result_section}"
@@ -146,10 +151,10 @@ class RunLogger:
         passed_tasks_count = sum(1 for t in self.task_log_history if not t.is_failed)
         failed_tasks_count = len(self.task_log_history) - passed_tasks_count
         self.summary_file.write(
-            f"- Total tasks: {tasks_count}\n",
-            f"- Passed tasks: {passed_tasks_count}\n",
-            f"- Failed tasks: {failed_tasks_count}\n",
-            f"- Success rate: {passed_tasks_count / tasks_count * 100:.2f}\n",
+            f"- Total tasks: {tasks_count}\n"
+            f"- Passed tasks: {passed_tasks_count}\n"
+            f"- Failed tasks: {failed_tasks_count}\n"
+            f"- Success rate: {passed_tasks_count / tasks_count * 100:.2f}\n"
             f"- Elapsed: {elapsed:.0f}sec ({elapsed // 60}min {int(elapsed) % 60}sec)\n"
         )
         

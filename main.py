@@ -24,7 +24,8 @@ def main() -> None:
         logger.log_benchmark_loaded(
             benchmark_id=benchmark.id, 
             benchmark_policy=benchmark.policy, 
-            benchmark_description=benchmark.description
+            benchmark_description=benchmark.description,
+            benchmark_tasks=len(benchmark.tasks)
         )
 
         agent = VMAgent(settings.MODEL_PROVIDER, settings.MODEL_NAME, settings.MODEL_API_TOKEN, logger=logger, thinking=settings.MODEL_THINKING)
