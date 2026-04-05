@@ -1,4 +1,6 @@
 from enum import Enum
+from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,4 +17,5 @@ class Settings(BaseSettings):
     BENCHMARK_ID: str = Field("bitgn/pac1-dev")
     MODEL_PROVIDER: ModelProvider = Field(ModelProvider.OPENAI)
     MODEL_NAME: str = Field("gpt-5.4-mini")
-    MODEL_API_TOKEN: str = Field(...)
+    MODEL_API_TOKEN: str = Field("")
+    MODEL_THINKING: Optional[str] = Field(None)
