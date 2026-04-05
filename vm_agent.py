@@ -20,9 +20,10 @@ class VMAgent:
         ("read", {"path": "AGENTS.md"}),
         ("context", {}),
     ]
-    def __init__(self, provider: ModelProvider, model_name: str, api_key: str, logger: RunLogger, max_steps: int = 30):
+    def __init__(self, provider: ModelProvider, model_name: str, api_key: str, logger: RunLogger, thinking: str | None = None, max_steps: int = 30):
         self.max_steps = max_steps
         self.provider = provider
+        self.thinking = thinking
         self.logger = logger
         self.sys_prompt = load_sys_prompt()
         if provider == ModelProvider.OPENAI:
@@ -31,7 +32,8 @@ class VMAgent:
                 api_key=Secret.from_token(api_key),
             )
         elif provider == ModelProvider.OLLAMA:
-            self._generator = OllamaChatGenerator(model=model_name)
+            think = thinking.lower() in ("true", "1", "yes") if thinking else False
+            self._generator = OllamaChatGenerator(model=model_name, think=think)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -112,9 +114,9 @@ class VMAgent:
 
     def build_generation_kwargs(self, provider: ModelProvider) -> dict:
         if provider == ModelProvider.OPENAI:
-            return {
-                "parallel_tool_calls": False,
-                "reasoning_effort": "high",
-            }
+            kwargs = {"parallel_tool_calls": False}
+            if self.thinking:
+                kwargs["reasoning"] = {"effort": self.thinking.lower()}
+            return kwargs
         return {}
 
