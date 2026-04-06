@@ -14,7 +14,10 @@ from vm_api import fetch_benchmark, Trial, VM
 def main() -> None:
     task_filter = sys.argv[1:]
     settings = Settings()
-    logger = RunLogger(settings.MODEL_NAME)
+    logger = RunLogger(
+        settings.MODEL_NAME,
+        reasoning_effort=settings.MODEL_THINKING.value if settings.MODEL_THINKING else None,
+    )
 
     try:
         client = HarnessServiceClientSync(settings.BENCHMARK_HOST)

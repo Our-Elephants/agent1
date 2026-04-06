@@ -83,6 +83,11 @@ class VMAgent:
                         grounding_refs=refs,
                         outcome=OutcomeEnum(args["outcome"]),
                     )
+                    self.logger.log_task_completion(
+                        message=completion.message,
+                        outcome=completion.outcome.value,
+                        grounding_refs=completion.grounding_refs,
+                    )
                     vm.execute_report_task_completion_command(completion)
                     return {"result": completion}
 
@@ -101,6 +106,11 @@ class VMAgent:
             message="Agent finished without explicit completion.",
             grounding_refs=[],
             outcome=OutcomeEnum.OUTCOME_ERR_INTERNAL,
+        )
+        self.logger.log_task_completion(
+            message=completion.message,
+            outcome=completion.outcome.value,
+            grounding_refs=completion.grounding_refs,
         )
         vm.execute_report_task_completion_command(completion)
         return {"result": completion}

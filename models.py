@@ -22,6 +22,6 @@ class Settings(BaseSettings):
     BENCHMARK_HOST: str = Field("https://api.bitgn.com")
     BENCHMARK_ID: str = Field("bitgn/pac1-dev")
     MODEL_PROVIDER: ModelProvider = Field(ModelProvider.OPENAI)
-    MODEL_NAME: str = Field("gpt-5.4-mini")
+    MODEL_NAME: str = Field("gpt-5.4")
     MODEL_API_TOKEN: str = Field("")
     MODEL_THINKING: Optional[ModelThinking] = Field(None)

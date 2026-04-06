@@ -21,14 +21,18 @@ class TaskLog:
     hint: str
     instruction: str
     steps: list[tuple[str, dict, str]] = field(default_factory=list)
+    completion_message: str | None = None
+    completion_outcome: str | None = None
+    completion_grounding_refs: list[str] = field(default_factory=list)
     is_failed: bool = False
     exception: Exception | None = None
     score: float | None = None
     score_detail: str | None = None
 
 class RunLogger:
-    def __init__(self, model: str):
+    def __init__(self, model: str, reasoning_effort: str | None = None):
         self.model = model
+        self.reasoning_effort = reasoning_effort
         self.run_id = self._make_run_id()
         self.run_dir = _LOGS_DIR / self.run_id
         self.run_dir.mkdir(exist_ok=True)
@@ -39,7 +43,10 @@ class RunLogger:
         self.current_task_log = None
         self.time_started = perf_counter()
         self.logger = self._make_logger()
-        self.logger.info(f"Started run: {self.run_id} ({self.run_dir})")
+        self.logger.info(
+            f"Started run: {self.run_id} ({self.run_dir}), "
+            f"model={self.model}, reasoning_effort={self.reasoning_effort or 'none'}"
+        )
 
     def _make_run_id(self):
         total_runs = sum(1 for _ in _LOGS_DIR.iterdir())
@@ -63,6 +70,7 @@ class RunLogger:
         f.write(
             f"# Run {self.run_id}\n"
             f"- Model: {self.model}\n"
+            f"- Reasoning effort: {self.reasoning_effort or 'none'}\n"
         )
         f.flush()
         return f
@@ -103,6 +111,12 @@ class RunLogger:
         self.current_task_log.steps.append((tool_name, tool_args, response))
         self.logger.info(f"Tool called for task {self.current_task_log.id}: {tool_name}")
 
+    def log_task_completion(self, message: str, outcome: str, grounding_refs: list[str] | None = None):
+        self.current_task_log.completion_message = message
+        self.current_task_log.completion_outcome = outcome
+        self.current_task_log.completion_grounding_refs = grounding_refs or []
+        self.logger.info(f"Task {self.current_task_log.id} completion reported: {outcome}")
+
     def log_task_failed_with_exception(self, exception: Exception):
         self.current_task_log.is_failed = True
         self.current_task_log.exception = exception
@@ -119,6 +133,17 @@ class RunLogger:
         t = self.current_task_log
         f = self.failed_file if t.is_failed else self.passed_file
         score_details_text = "\n".join(f"- {d}" for d in t.score_detail) + "\n" if t.score_detail else ""
+        completion_refs_text = (
+            "\n".join(f"- {ref}" for ref in t.completion_grounding_refs) + "\n"
+            if t.completion_grounding_refs else "None\n"
+        )
+        completion_section = (
+            f"### Final Agent Response\n"
+            f"#### Message\n```\n{t.completion_message}\n```\n"
+            f"#### Outcome\n`{t.completion_outcome}`\n"
+            f"#### Grounding Refs\n{completion_refs_text}"
+            if t.completion_message or t.completion_outcome or t.completion_grounding_refs else ""
+        )
         result_section = (
             f"### Exception\n```{t.exception}```\n" if t.exception
             else f"### Score\nValue: *{t.score}*\n{score_details_text}"
@@ -129,6 +154,7 @@ class RunLogger:
             f"### Instruction\n```\n{t.instruction}\n```\n"
             f"### Hint\n{t.hint}\n"
             f"### Execution\n{self._make_execution_log(t)}\n"
+            f"{completion_section}"
             f"{result_section}"
             f"---\n"
         )
