@@ -5,6 +5,13 @@ from datetime import datetime
 from time import perf_counter
 import logging
 
+def _fence(content: str, lang: str = "") -> str:
+    """Wrap content in a markdown fenced code block, using enough backticks to avoid clashes."""
+    backticks = "```"
+    while backticks in content:
+        backticks += "`"
+    return f"{backticks}{lang}\n{content}\n{backticks}\n"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -154,19 +161,19 @@ class RunLogger:
         )
         completion_section = (
             f"### Final Agent Response\n"
-            f"#### Message\n```\n{t.completion_message}\n```\n"
+            f"#### Message\n{_fence(t.completion_message)}"
             f"#### Outcome\n`{t.completion_outcome}`\n"
             f"#### Grounding Refs\n{completion_refs_text}"
             if t.completion_message or t.completion_outcome or t.completion_grounding_refs else ""
         )
         result_section = (
-            f"### Exception\n```{t.exception}```\n" if t.exception
+            f"### Exception\n{_fence(str(t.exception))}" if t.exception
             else f"### Score\nValue: *{t.score}*\n{score_details_text}"
         )
         f.write(
             f"## Task {t.id}\n"
             f"### Preview\n{t.preview}\n"
-            f"### Instruction\n```\n{t.instruction}\n```\n"
+            f"### Instruction\n{_fence(t.instruction)}"
             f"### Hint\n{t.hint}\n"
             f"### Execution\n{self._make_execution_log(t)}\n"
             f"{completion_section}"
@@ -182,11 +189,11 @@ class RunLogger:
         for step in task_log.steps:
             match step:
                 case ReasoningStep(text=text):
-                    execution_log += f"#### Reasoning\n```\n{text}\n```\n"
+                    execution_log += f"#### Reasoning\n{_fence(text)}"
                 case ToolCallStep(tool_name=name, tool_args=args, response=resp):
                     execution_log += f"#### Call {name}\n" \
-                        f"```json\n{json.dumps(args)}\n```\n" \
-                        f"##### Response\n```\n{resp}\n```\n"
+                        f"{_fence(json.dumps(args), 'json')}" \
+                        f"##### Response\n{_fence(resp)}"
         return execution_log
         
 
