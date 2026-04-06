@@ -15,12 +15,24 @@ _LOGS_DIR = Path("logs")
 _LOGS_DIR.mkdir(exist_ok=True)
 
 @dataclass
+class ToolCallStep:
+    tool_name: str
+    tool_args: dict
+    response: str
+
+@dataclass
+class ReasoningStep:
+    text: str
+
+type Step = ToolCallStep | ReasoningStep
+
+@dataclass
 class TaskLog:
     id: str
     preview: str
     hint: str
     instruction: str
-    steps: list[tuple[str, dict, str]] = field(default_factory=list)
+    steps: list[Step] = field(default_factory=list)
     completion_message: str | None = None
     completion_outcome: str | None = None
     completion_grounding_refs: list[str] = field(default_factory=list)
@@ -107,8 +119,11 @@ class RunLogger:
         self.current_task_log = TaskLog(id, task_preview, task_hint, instruction)
         self.logger.info(f"Start task {id}: {task_preview}")
 
+    def log_reasoning(self, reasoning_text: str):
+        self.current_task_log.steps.append(ReasoningStep(text=reasoning_text))
+
     def log_task_tool_call(self, tool_name: str, tool_args: dict, response: str):
-        self.current_task_log.steps.append((tool_name, tool_args, response))
+        self.current_task_log.steps.append(ToolCallStep(tool_name, tool_args, response))
         self.logger.info(f"Tool called for task {self.current_task_log.id}: {tool_name}")
 
     def log_task_completion(self, message: str, outcome: str, grounding_refs: list[str] | None = None):
@@ -164,10 +179,14 @@ class RunLogger:
 
     def _make_execution_log(self, task_log: TaskLog):
         execution_log = ""
-        for tool_name, tool_args, tool_resp in task_log.steps:
-            execution_log += f"#### Call {tool_name}\n" \
-                f"```json\n{json.dumps(tool_args)}\n```\n" \
-                f"##### Response\n```\n{tool_resp}\n```\n"
+        for step in task_log.steps:
+            match step:
+                case ReasoningStep(text=text):
+                    execution_log += f"#### Reasoning\n```\n{text}\n```\n"
+                case ToolCallStep(tool_name=name, tool_args=args, response=resp):
+                    execution_log += f"#### Call {name}\n" \
+                        f"```json\n{json.dumps(args)}\n```\n" \
+                        f"##### Response\n```\n{resp}\n```\n"
         return execution_log
         
 

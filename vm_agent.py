@@ -70,6 +70,8 @@ class VMAgent:
                 generation_kwargs=generation_kwargs,
             )
             reply = response["replies"][0]
+            if reply.reasoning:
+                self.logger.log_reasoning(reply.reasoning.reasoning_text)
             messages.append(reply)
 
             if tc := reply.tool_call:
