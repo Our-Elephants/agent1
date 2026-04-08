@@ -172,7 +172,7 @@ class RunLogger:
         )
         f.write(
             f"## Task {t.id}\n"
-            f"### Preview\n{t.preview}\n"
+            f"### Preview\n{_fence(t.preview)}\n"
             f"### Instruction\n{_fence(t.instruction)}"
             f"### Hint\n{t.hint}\n"
             f"### Execution\n{self._make_execution_log(t)}\n"
