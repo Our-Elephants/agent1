@@ -141,6 +141,6 @@ class VMAgent:
                 "tool_choice": "required",
             }
             if self.thinking:
-                kwargs["reasoning"] = {"effort": self.thinking.value}
+                kwargs["reasoning"] = {"effort": self.thinking.value, "summary": "auto"}
             return kwargs
         return {}
