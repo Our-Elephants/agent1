@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import BaseModel
 from haystack.tools import tool, Toolset
 
 from vm_api import (
@@ -11,6 +12,12 @@ from vm_api import (
 )
 
 _current_vm: VM | None = None
+
+
+class SearchQuery(BaseModel):
+    pattern: str
+    limit: int = 10
+    root: str = "/"
 
 
 @tool(description="Show directory tree (args: level, root)")
@@ -27,18 +34,24 @@ def find(name: str, kind: Literal["all", "files", "dirs"] = "all", limit: int = 
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Search file contents (args: pattern, limit, root)")
-def search(pattern: str, limit: int = 10, root: str = "/") -> str:
-    cmd = RequestSearchVMCommand(pattern=pattern, limit=limit, root=root)
-    resp = _current_vm.execute_search_command(cmd)
-    return VMResponseFormatter.format(cmd, resp)
+@tool(description="Search file contents (args: queries)")
+def search(queries: list[SearchQuery]) -> str:
+    results: list[str] = []
+    for q in queries:
+        cmd = RequestSearchVMCommand(pattern=q.pattern, limit=q.limit, root=q.root)
+        resp = _current_vm.execute_search_command(cmd)
+        results.append(VMResponseFormatter.format(cmd, resp))
+    return "\n".join(results)
 
 
-@tool(description="List directory contents (args: path)")
-def ls(path: str = "/") -> str:
-    cmd = RequestListVMCommand(path=path)
-    resp = _current_vm.execute_list_command(cmd)
-    return VMResponseFormatter.format(cmd, resp)
+@tool(description="List directory contents (args: paths)")
+def ls(paths: list[str]) -> str:
+    results: list[str] = []
+    for path in paths:
+        cmd = RequestListVMCommand(path=path)
+        resp = _current_vm.execute_list_command(cmd)
+        results.append(VMResponseFormatter.format(cmd, resp))
+    return "\n".join(results)
 
 
 @tool(description="Read file contents (args: path, number, start_line, end_line)")
@@ -62,11 +75,14 @@ def write(path: str, content: str, start_line: int = 0, end_line: int = 0) -> st
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Delete file or directory (args: path)")
-def delete(path: str) -> str:
-    cmd = RequestDeleteVMCommand(path=path)
-    resp = _current_vm.execute_delete_command(cmd)
-    return VMResponseFormatter.format(cmd, resp)
+@tool(description="Delete files or directories (args: paths)")
+def delete(paths: list[str]) -> str:
+    results: list[str] = []
+    for path in paths:
+        cmd = RequestDeleteVMCommand(path=path)
+        resp = _current_vm.execute_delete_command(cmd)
+        results.append(VMResponseFormatter.format(cmd, resp))
+    return "\n".join(results)
 
 
 @tool(description="Create directory (args: path)")
