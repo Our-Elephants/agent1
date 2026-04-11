@@ -26,3 +26,4 @@ class Settings(BaseSettings):
     AZURE_OPENAI_API_KEY: str = Field("")
     AZURE_OPENAI_ENDPOINT: str = Field("")
     MODEL_THINKING: Optional[ModelThinking] = Field(None)
+    MAX_PARALLEL_TASKS: int = Field(5, ge=1, le=5)
