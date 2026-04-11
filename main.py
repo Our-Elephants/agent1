@@ -2,7 +2,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bitgn.harness_connect import HarnessServiceClientSync
-from bitgn.harness_pb2 import StatusRequest
+from bitgn.harness_pb2 import GetRunRequest, StartRunRequest, StatusRequest, SubmitRunRequest
 from bitgn.vm.pcm_connect import PcmRuntimeClientSync
 from connectrpc.errors import ConnectError
 
@@ -23,12 +23,12 @@ def _make_agent(settings: Settings, logger: RunLogger) -> VMAgent:
     )
 
 
-def _run_task(task, benchmark_id: str, settings: Settings, logger: RunLogger) -> None:
+def _run_task(trial_id: str, task, benchmark_id: str, settings: Settings, logger: RunLogger) -> None:
     client = HarnessServiceClientSync(settings.BENCHMARK_HOST)
-    trial = Trial(client, benchmark_id, task.task_id)
+    trial = Trial(client, benchmark_id, task_id=task.task_id, trial_id=trial_id)
 
     try:
-        trial.start()
+        trial.start(prod=True)
     except Exception as exception:
         logger.log_task_started(
             id=task.task_id,
@@ -86,19 +86,40 @@ def main() -> None:
             benchmark_description=benchmark.description,
             benchmark_tasks=len(benchmark.tasks)
         )
-        selected_tasks = [
-            task for task in benchmark.tasks
-            if not task_filter or task.task_id in task_filter
-        ]
+        task_by_id = {task.task_id: task for task in benchmark.tasks}
+        run = client.start_run(StartRunRequest(
+            name="SGR NextStep Sample",
+            benchmark_id=benchmark.id,
+            api_key=settings.BENCH_API_KEY,
+        ))
 
-        max_workers = min(settings.MAX_PARALLEL_TASKS, len(selected_tasks)) or 1
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(_run_task, task, benchmark.id, settings, logger)
-                for task in selected_tasks
-            ]
-            for future in as_completed(futures):
-                future.result()
+        try:
+            run_state = client.get_run(GetRunRequest(run_id=run.run_id))
+            trial_heads_by_id = {trial.trial_id: trial for trial in run_state.trials}
+            selected_trials = []
+            for trial_id in run.trial_ids:
+                trial_head = trial_heads_by_id.get(trial_id)
+                if trial_head is None:
+                    logger.logger.warning(f"Run {run.run_id} did not include metadata for trial {trial_id}")
+                    continue
+                if task_filter and trial_head.task_id not in task_filter:
+                    continue
+                task = task_by_id.get(trial_head.task_id)
+                if task is None:
+                    logger.logger.warning(f"Benchmark {benchmark.id} did not include metadata for task {trial_head.task_id}")
+                    continue
+                selected_trials.append((trial_id, task))
+
+            max_workers = min(settings.MAX_PARALLEL_TASKS, len(selected_trials)) or 1
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(_run_task, trial_id, task, benchmark.id, settings, logger)
+                    for trial_id, task in selected_trials
+                ]
+                for future in as_completed(futures):
+                    future.result()
+        finally:
+            client.submit_run(SubmitRunRequest(run_id=run.run_id, force=True))
     except ConnectError as exception:
         logger.logger.error("Connection error", exception)
     except KeyboardInterrupt:

@@ -12,7 +12,7 @@ from google.protobuf.message import Message
 from google.protobuf.json_format import MessageToDict
 
 from bitgn.harness_connect import HarnessServiceClientSync
-from bitgn.harness_pb2 import EndTrialRequest, EvalPolicy, GetBenchmarkRequest, StartPlaygroundRequest, StatusRequest
+from bitgn.harness_pb2 import EndTrialRequest, EvalPolicy, GetBenchmarkRequest, StartPlaygroundRequest, StartTrialRequest
 from bitgn.vm.pcm_connect import PcmRuntimeClientSync
 from bitgn.vm.pcm_pb2 import (
     AnswerRequest,
@@ -72,22 +72,33 @@ class TrialState(Enum):
     ENDED = "ended"
 
 class Trial:
-    def __init__(self, client: HarnessServiceClientSync, benchmark_id: str, task_id: str):
+    def __init__(self, client: HarnessServiceClientSync, benchmark_id: str, task_id: str | None = None, trial_id: str | None = None):
         self.client = client
         self.benchmark_id = benchmark_id
         self.task_id = task_id
-        self.id = None
+        self.id = trial_id
+        self.run_id = None
         self.harness_url = None
         self.instruction = None
         self.score = None
         self.score_detail = None
         self.state = TrialState.IDLE
     
-    def start(self):
+    def start(self, prod=False):
         if self.state is not TrialState.IDLE:
             raise Exception(f"Trial {self.id} ({self.state}) cannot be started: trial is not in idle state")
-        res = self.client.start_playground(StartPlaygroundRequest(benchmark_id=self.benchmark_id, task_id=self.task_id))
+        if not prod:
+            if self.task_id is None:
+                raise Exception("Playground trials require a task_id")
+            res = self.client.start_playground(StartPlaygroundRequest(benchmark_id=self.benchmark_id, task_id=self.task_id))
+        else:
+            if self.id is None:
+                raise Exception("Benchmark run trials require an existing trial_id")
+            res = self.client.start_trial(StartTrialRequest(trial_id=self.id))
         self.id = res.trial_id
+        self.benchmark_id = res.benchmark_id
+        self.task_id = res.task_id
+        self.run_id = getattr(res, "run_id", None)
         self.harness_url = res.harness_url
         self.instruction = res.instruction
         self.state = TrialState.STARTED
