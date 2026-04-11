@@ -62,11 +62,14 @@ def write(path: str, content: str, start_line: int = 0, end_line: int = 0) -> st
     return VMResponseFormatter.format(cmd, resp)
 
 
-@tool(description="Delete file or directory (args: path)")
-def delete(path: str) -> str:
-    cmd = RequestDeleteVMCommand(path=path)
-    resp = _current_vm.execute_delete_command(cmd)
-    return VMResponseFormatter.format(cmd, resp)
+@tool(description="Delete files or directories (args: paths)")
+def delete(paths: list[str]) -> str:
+    results: list[str] = []
+    for path in paths:
+        cmd = RequestDeleteVMCommand(path=path)
+        resp = _current_vm.execute_delete_command(cmd)
+        results.append(VMResponseFormatter.format(cmd, resp))
+    return "\n".join(results)
 
 
 @tool(description="Create directory (args: path)")
