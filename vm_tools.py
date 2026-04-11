@@ -1,4 +1,5 @@
 from typing import Literal
+import threading
 
 from haystack.tools import tool, Toolset
 
@@ -10,76 +11,83 @@ from vm_api import (
     RequestReportTaskCompletionVMCommand, OutcomeEnum,
 )
 
-_current_vm: VM | None = None
+_vm_context = threading.local()
+
+
+def _get_current_vm() -> VM:
+    vm = getattr(_vm_context, "current_vm", None)
+    if vm is None:
+        raise RuntimeError("VM toolset is not bound to a runtime.")
+    return vm
 
 
 @tool(description="Show directory tree (args: level, root)")
 def tree(level: int = 2, root: str = "/") -> str:
     cmd = RequestTreeVMCommand(level=level, root=root)
-    resp = _current_vm.execute_tree_command(cmd)
+    resp = _get_current_vm().execute_tree_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Find files or directories (args: name, kind, limit, root)")
 def find(name: str, kind: Literal["all", "files", "dirs"] = "all", limit: int = 10, root: str = "/") -> str:
     cmd = RequestFindVMCommand(name=name, kind=kind, limit=limit, root=root)
-    resp = _current_vm.execute_find_command(cmd)
+    resp = _get_current_vm().execute_find_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Search file contents (args: pattern, limit, root)")
 def search(pattern: str, limit: int = 10, root: str = "/") -> str:
     cmd = RequestSearchVMCommand(pattern=pattern, limit=limit, root=root)
-    resp = _current_vm.execute_search_command(cmd)
+    resp = _get_current_vm().execute_search_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="List directory contents (args: path)")
 def ls(path: str = "/") -> str:
     cmd = RequestListVMCommand(path=path)
-    resp = _current_vm.execute_list_command(cmd)
+    resp = _get_current_vm().execute_list_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Read file contents (args: path, number, start_line, end_line)")
 def read(path: str, number: bool = False, start_line: int = 0, end_line: int = 0) -> str:
     cmd = RequestReadVMCommand(path=path, number=number, start_line=start_line, end_line=end_line)
-    resp = _current_vm.execute_read_command(cmd)
+    resp = _get_current_vm().execute_read_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Get VM runtime context")
 def context() -> str:
     cmd = RequestContextVMCommand()
-    resp = _current_vm.execute_context_command(cmd)
+    resp = _get_current_vm().execute_context_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Write file (args: path, content, start_line, end_line)")
 def write(path: str, content: str, start_line: int = 0, end_line: int = 0) -> str:
     cmd = RequestWriteVMCommand(path=path, content=content, start_line=start_line, end_line=end_line)
-    resp = _current_vm.execute_write_command(cmd)
+    resp = _get_current_vm().execute_write_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Delete file or directory (args: path)")
 def delete(path: str) -> str:
     cmd = RequestDeleteVMCommand(path=path)
-    resp = _current_vm.execute_delete_command(cmd)
+    resp = _get_current_vm().execute_delete_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Create directory (args: path)")
 def mkdir(path: str) -> str:
     cmd = RequestMkDirVMCommand(path=path)
-    resp = _current_vm.execute_mkdir_command(cmd)
+    resp = _get_current_vm().execute_mkdir_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 
 @tool(description="Move or rename file/directory (args: from_name, to_name)")
 def move(from_name: str, to_name: str) -> str:
     cmd = RequestMoveVMCommand(from_name=from_name, to_name=to_name)
-    resp = _current_vm.execute_move_command(cmd)
+    resp = _get_current_vm().execute_move_command(cmd)
     return VMResponseFormatter.format(cmd, resp)
 
 @tool(description=(
@@ -93,6 +101,5 @@ def report_task_completion(message: str, outcome: str, grounding_refs: list[str]
 _VM_TOOLSET = Toolset([tree, find, search, ls, read, context, write, delete, mkdir, move, report_task_completion])
 
 def make_toolset(vm: VM) -> Toolset:
-    global _current_vm
-    _current_vm = vm
+    _vm_context.current_vm = vm
     return _VM_TOOLSET

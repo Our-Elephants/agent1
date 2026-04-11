@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from time import perf_counter
 import logging
+import threading
 
 def _fence(content: str, lang: str = "") -> str:
     """Wrap content in a markdown fenced code block, using enough backticks to avoid clashes."""
@@ -46,7 +47,7 @@ class TaskLog:
     is_failed: bool = False
     exception: Exception | None = None
     score: float | None = None
-    score_detail: str | None = None
+    score_detail: list[str] | None = None
 
 class RunLogger:
     def __init__(self, model: str, reasoning_effort: str | None = None):
@@ -59,7 +60,8 @@ class RunLogger:
         self.failed_file = self._make_failed_file()
         self.summary_file = self._make_summary_file()
         self.task_log_history = []
-        self.current_task_log = None
+        self._local = threading.local()
+        self._write_lock = threading.Lock()
         self.time_started = perf_counter()
         self.logger = self._make_logger()
         self.logger.info(
@@ -95,8 +97,9 @@ class RunLogger:
         return f
     
     def _make_logger(self):
-        logger = logging.getLogger("agent")
+        logger = logging.getLogger(f"agent.{self.run_id}")
         logger.propagate = False
+        logger.handlers.clear()
         fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         sh = logging.StreamHandler()
         sh.setFormatter(fmt)
@@ -106,6 +109,12 @@ class RunLogger:
         logger.addHandler(sh)
         logger.addHandler(fh)
         return logger
+
+    def _current_task_log(self) -> TaskLog:
+        task_log = getattr(self._local, "current_task_log", None)
+        if task_log is None:
+            raise RuntimeError("No task is currently being logged on this thread.")
+        return task_log
 
     def teardown(self):
         self.passed_file.close()
@@ -123,37 +132,41 @@ class RunLogger:
         self.logger.info(f"Loaded benchmark: {benchmark_id}")
 
     def log_task_started(self, id: str, task_preview: str, task_hint: str, instruction: str):
-        self.current_task_log = TaskLog(id, task_preview, task_hint, instruction)
+        self._local.current_task_log = TaskLog(id, task_preview, task_hint, instruction)
         self.logger.info(f"Start task {id}: {task_preview}")
 
     def log_reasoning(self, reasoning_text: str):
-        self.current_task_log.steps.append(ReasoningStep(text=reasoning_text))
+        self._current_task_log().steps.append(ReasoningStep(text=reasoning_text))
 
     def log_task_tool_call(self, tool_name: str, tool_args: dict, response: str):
-        self.current_task_log.steps.append(ToolCallStep(tool_name, tool_args, response))
-        self.logger.info(f"Tool called for task {self.current_task_log.id}: {tool_name}")
+        task_log = self._current_task_log()
+        task_log.steps.append(ToolCallStep(tool_name, tool_args, response))
+        self.logger.info(f"Tool called for task {task_log.id}: {tool_name}")
 
     def log_task_completion(self, message: str, outcome: str, grounding_refs: list[str] | None = None):
-        self.current_task_log.completion_message = message
-        self.current_task_log.completion_outcome = outcome
-        self.current_task_log.completion_grounding_refs = grounding_refs or []
-        self.logger.info(f"Task {self.current_task_log.id} completion reported: {outcome}")
+        task_log = self._current_task_log()
+        task_log.completion_message = message
+        task_log.completion_outcome = outcome
+        task_log.completion_grounding_refs = grounding_refs or []
+        self.logger.info(f"Task {task_log.id} completion reported: {outcome}")
 
     def log_task_failed_with_exception(self, exception: Exception):
-        self.current_task_log.is_failed = True
-        self.current_task_log.exception = exception
-        self.logger.warning(f"Task {self.current_task_log.id} failed with exception: {str(exception)}")
+        task_log = self._current_task_log()
+        task_log.is_failed = True
+        task_log.exception = exception
+        self.logger.warning(f"Task {task_log.id} failed with exception: {str(exception)}")
 
-    def log_task_scored(self, score: float, score_detail: str):
-        self.current_task_log.score = score
+    def log_task_scored(self, score: float, score_detail: list[str] | None):
+        task_log = self._current_task_log()
+        task_log.score = score
         if score < 1:
-            self.current_task_log.is_failed = True
-        self.current_task_log.score_detail = score_detail
-        self.logger.info(f"Task {self.current_task_log.id} {"passed" if self.current_task_log.is_failed else "passed"}: {score}")
+            task_log.is_failed = True
+        task_log.score_detail = score_detail
+        status = "failed" if task_log.is_failed else "passed"
+        self.logger.info(f"Task {task_log.id} {status}: {score}")
     
     def flush_task_log(self):
-        t = self.current_task_log
-        f = self.failed_file if t.is_failed else self.passed_file
+        t = self._current_task_log()
         score_details_text = "\n".join(f"- {d}" for d in t.score_detail) + "\n" if t.score_detail else ""
         completion_refs_text = (
             "\n".join(f"- {ref}" for ref in t.completion_grounding_refs) + "\n"
@@ -170,19 +183,21 @@ class RunLogger:
             f"### Exception\n{_fence(str(t.exception))}" if t.exception
             else f"### Score\nValue: *{t.score}*\n{score_details_text}"
         )
-        f.write(
-            f"## Task {t.id}\n"
-            f"### Preview\n{_fence(t.preview)}\n"
-            f"### Instruction\n{_fence(t.instruction)}"
-            f"### Hint\n{t.hint}\n"
-            f"### Execution\n{self._make_execution_log(t)}\n"
-            f"{completion_section}"
-            f"{result_section}"
-            f"---\n"
-        )
-        f.flush()
-        self.task_log_history.append(self.current_task_log)
-        self.current_task_log = None
+        with self._write_lock:
+            f = self.failed_file if t.is_failed else self.passed_file
+            f.write(
+                f"## Task {t.id}\n"
+                f"### Preview\n{_fence(t.preview)}\n"
+                f"### Instruction\n{_fence(t.instruction)}"
+                f"### Hint\n{t.hint}\n"
+                f"### Execution\n{self._make_execution_log(t)}\n"
+                f"{completion_section}"
+                f"{result_section}"
+                f"---\n"
+            )
+            f.flush()
+            self.task_log_history.append(t)
+        self._local.current_task_log = None
 
     def _make_execution_log(self, task_log: TaskLog):
         execution_log = ""
@@ -202,11 +217,14 @@ class RunLogger:
         tasks_count = len(self.task_log_history)
         passed_tasks_count = sum(1 for t in self.task_log_history if not t.is_failed)
         failed_tasks_count = len(self.task_log_history) - passed_tasks_count
-        self.summary_file.write(
-            f"- Total tasks: {tasks_count}\n"
-            f"- Passed tasks: {passed_tasks_count}\n"
-            f"- Failed tasks: {failed_tasks_count}\n"
-            f"- Success rate: {passed_tasks_count / tasks_count * 100:.2f}\n"
-            f"- Elapsed: {elapsed:.0f}sec ({elapsed // 60}min {int(elapsed) % 60}sec)\n"
-        )
+        success_rate = (passed_tasks_count / tasks_count * 100) if tasks_count else 0.0
+        with self._write_lock:
+            self.summary_file.write(
+                f"- Total tasks: {tasks_count}\n"
+                f"- Passed tasks: {passed_tasks_count}\n"
+                f"- Failed tasks: {failed_tasks_count}\n"
+                f"- Success rate: {success_rate:.2f}\n"
+                f"- Elapsed: {elapsed:.0f}sec ({elapsed // 60}min {int(elapsed) % 60}sec)\n"
+            )
+            self.summary_file.flush()
         
