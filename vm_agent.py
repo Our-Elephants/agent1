@@ -1,7 +1,8 @@
 import json
+import posixpath
 
 from haystack import component
-from haystack.components.generators.chat import OpenAIResponsesChatGenerator
+from haystack.components.generators.chat import AzureOpenAIResponsesChatGenerator
 from haystack.dataclasses import ChatMessage, ToolCall
 from haystack.utils import Secret
 from haystack_integrations.components.generators.ollama import OllamaChatGenerator
@@ -25,9 +26,9 @@ class VMAgent:
         provider: ModelProvider,
         model_name: str,
         api_key: str,
+        azure_endpoint: str,
         logger: RunLogger,
         thinking: ModelThinking | None = None,
-        base_url: str | None = None,
         max_steps: int = 30,
     ):
         self.max_steps = max_steps
@@ -36,10 +37,10 @@ class VMAgent:
         self.logger = logger
         self.sys_prompt = load_sys_prompt()
         if provider == ModelProvider.OPENAI:
-            self._generator = OpenAIResponsesChatGenerator(
-                model=model_name,
+            self._generator = AzureOpenAIResponsesChatGenerator(
                 api_key=Secret.from_token(api_key),
-                api_base_url=base_url,
+                azure_endpoint=azure_endpoint,
+                azure_deployment=model_name,
             )
         elif provider == ModelProvider.OLLAMA:
             self._generator = OllamaChatGenerator(
@@ -86,6 +87,20 @@ class VMAgent:
                         message=args["message"],
                         grounding_refs=refs,
                         outcome=OutcomeEnum(args["outcome"]),
+                    )
+                    self.logger.log_task_completion(
+                        message=completion.message,
+                        outcome=completion.outcome.value,
+                        grounding_refs=completion.grounding_refs,
+                    )
+                    vm.execute_report_task_completion_command(completion)
+                    return {"result": completion}
+
+                if self._is_blocked_delete(tc.tool_name, tc.arguments):
+                    completion = RequestReportTaskCompletionVMCommand(
+                        message="Denied unsafe delete request targeting protected root path or AGENTS.md.",
+                        grounding_refs=[],
+                        outcome=OutcomeEnum.OUTCOME_DENIED_SECURITY,
                     )
                     self.logger.log_task_completion(
                         message=completion.message,
@@ -157,3 +172,14 @@ class VMAgent:
                 kwargs["reasoning"] = {"effort": self.thinking.value, "summary": "auto"}
             return kwargs
         return {}
+
+    def _is_blocked_delete(self, tool_name: str, arguments: dict) -> bool:
+        if tool_name != "delete":
+            return False
+
+        path = arguments.get("path")
+        if not isinstance(path, str):
+            return False
+
+        normalized = posixpath.normpath(path.strip() or ".")
+        return normalized in {"/", "/AGENTS.md", "AGENTS.md"}

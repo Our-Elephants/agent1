@@ -30,8 +30,14 @@ def main() -> None:
             benchmark_description=benchmark.description,
             benchmark_tasks=len(benchmark.tasks)
         )
-
-        agent = VMAgent(settings.MODEL_PROVIDER, settings.MODEL_NAME, settings.MODEL_API_TOKEN, logger=logger, thinking=settings.MODEL_THINKING, base_url=settings.MODEL_BASE_URL)
+        agent = VMAgent(
+            settings.MODEL_PROVIDER,
+            settings.MODEL_NAME,
+            settings.AZURE_OPENAI_API_KEY,
+            settings.AZURE_OPENAI_ENDPOINT,
+            logger=logger,
+            thinking=settings.MODEL_THINKING,
+        )
 
         for task in benchmark.tasks:
             if task_filter and task.task_id not in task_filter:

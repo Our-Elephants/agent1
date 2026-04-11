@@ -23,6 +23,6 @@ class Settings(BaseSettings):
     BENCHMARK_ID: str = Field("bitgn/pac1-dev")
     MODEL_PROVIDER: ModelProvider = Field(ModelProvider.OPENAI)
     MODEL_NAME: str = Field("gpt-5.4")
-    MODEL_API_TOKEN: str = Field("")
-    MODEL_BASE_URL: Optional[str] = Field(None)
+    AZURE_OPENAI_API_KEY: str = Field("")
+    AZURE_OPENAI_ENDPOINT: str = Field("")
     MODEL_THINKING: Optional[ModelThinking] = Field(None)

@@ -16,10 +16,15 @@ Create a `.env` file:
 BENCHMARK_HOST=https://api.bitgn.com
 BENCHMARK_ID=bitgn/pac1-dev
 
-# Optional: defaults to openai / gpt-5.4-mini
-MODEL_PROVIDER=ollama
-MODEL_NAME=qwen3.5:9b
-MODEL_API_TOKEN=sk-...
+# Azure OpenAI
+MODEL_PROVIDER=openai
+MODEL_NAME=gpt-4.1
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+
+# Optional Ollama alternative
+# MODEL_PROVIDER=ollama
+# MODEL_NAME=qwen3.5:9b
 ```
 
 ## Usage
