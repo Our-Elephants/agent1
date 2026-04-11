@@ -40,6 +40,7 @@ Settings are loaded from `.env` via pydantic-settings (`models.py`):
 | `MODEL_PROVIDER` | No | `openai` (default) or `ollama` |
 | `MODEL_NAME` | No | Model name (default: `gpt-5.4`) |
 | `MODEL_API_TOKEN` | No | API key for the model provider |
+| `MODEL_BASE_URL` | No | Custom base URL for the OpenAI API (default: OpenAI's default) |
 | `MODEL_THINKING` | No | Reasoning effort: `low`, `medium`, or `high` (default: disabled) |
 
 ## Key Patterns

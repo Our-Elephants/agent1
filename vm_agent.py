@@ -27,6 +27,7 @@ class VMAgent:
         api_key: str,
         logger: RunLogger,
         thinking: ModelThinking | None = None,
+        base_url: str | None = None,
         max_steps: int = 30,
     ):
         self.max_steps = max_steps
@@ -38,6 +39,7 @@ class VMAgent:
             self._generator = OpenAIResponsesChatGenerator(
                 model=model_name,
                 api_key=Secret.from_token(api_key),
+                api_base_url=base_url,
             )
         elif provider == ModelProvider.OLLAMA:
             self._generator = OllamaChatGenerator(
