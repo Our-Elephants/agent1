@@ -2,7 +2,7 @@ import json
 
 from haystack import component
 from haystack.components.generators.chat import OpenAIResponsesChatGenerator
-from haystack.dataclasses import ChatMessage
+from haystack.dataclasses import ChatMessage, ToolCall
 from haystack.utils import Secret
 from haystack_integrations.components.generators.ollama import OllamaChatGenerator
 
@@ -121,17 +121,28 @@ class VMAgent:
     
     def run_tool_sequence(
         self,
-        tool_args_by_name: list[tuple],
+        tool_args_by_name: list[tuple[str, dict]],
         tools_by_name: dict,
     ) -> list[ChatMessage]:
-        messages = []
-        for tool_name, args in tool_args_by_name:
+        messages: list[ChatMessage] = []
+
+        for index, (tool_name, args) in enumerate(tool_args_by_name):
+            tool_id = f"fc_{index}"
+            tool_call = ToolCall(
+                tool_name,
+                args,
+                id=tool_id,
+                extra={"call_id": tool_id},
+            )
+
             try:
+                messages.append(ChatMessage.from_assistant(tool_calls=[tool_call]))
                 result = tools_by_name[tool_name].invoke(**args)
                 self.logger.log_task_tool_call(tool_name, args, result)
             except Exception as exc:
                 result = f"ERROR: {exc}"
-            messages.append(ChatMessage.from_user(str(result)))
+
+            messages.append(ChatMessage.from_tool(str(result), origin=tool_call))
 
         return messages
 
